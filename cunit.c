@@ -17,12 +17,13 @@
 */
 
 
-#define TST (".tst")
-#define OUT (".out")
-#define OK (".ok")
+#define TST ".tst"
+#define OUT ".out"
+#define OK ".ok"
 
 #define PWD getenv("PWD")
 
+#define MAXFILES 20
 
 int
 IsTerm(char* file, char* term){
@@ -92,7 +93,7 @@ main(int argc, char *argv[])
 {
 	argc--;
 	argv++;
-	char* arry[20];
+	char* arry[MAXFILES];
 	int nfiles;
 	if (argc==1){
 		if (strcmp(argv[0],"-c")==0){
