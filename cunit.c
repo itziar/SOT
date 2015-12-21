@@ -83,7 +83,34 @@ FindFiles(char* directorio, char* arry[], char* term){
 	return contador;
 }
 
+void
+CreatFile(char* fichero, char* term){
+	int fw;
+	char* nameFile;
+	char* saveptr;
+	char *token;
 
+	token=strtok_r(fichero, ".", &saveptr);
+
+	nameFile = malloc (strlen(token)+strlen(term)+1);
+	sprintf(nameFile,"%s%s",token, term);
+	printf("fichero: %s %s\n", token, nameFile);
+	fw=creat(nameFile, 0660);
+	if(fw<0){
+		fprintf(stderr, "Error al crear %s\n", nameFile);
+	}
+	free(nameFile);
+}
+
+void
+ProcesarFichero(char* fichero){
+	printf("procesar fichero\n");
+	printf("creamos el archivo .out\n");
+	CreatFile(fichero, OUT);
+	printf("miramos si existe .ok\n");
+	CreatFile(fichero, OK);
+	printf("test correcto o incorrecto\n");
+}
 
 
 //MAIN DEL PROGRAMA PRINCIPAL--------------------------------------------------------------------
@@ -109,5 +136,8 @@ main(int argc, char *argv[])
 		printf("No hay ningun fichero .tst\n");
 		exit(EXIT_SUCCESS);
 	}
+	// para cada fichero concurrentemente thread o fork?
+	ProcesarFichero(arry[0]);
+
 	exit(EXIT_SUCCESS);
 };
