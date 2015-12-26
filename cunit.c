@@ -25,6 +25,8 @@
 
 #define MAXFILES 20
 
+#define MAXLINEA 256
+
 int
 IsTerm(char* file, char* term){
 	int lenfich, lenterm;
@@ -66,9 +68,8 @@ FindFiles(char* directorio, char* arry[], char* term){
 				stat(path, &s);
 				if(!S_ISDIR(s.st_mode)){
 					if(IsTerm(path, term)){
-						//añado el path al array
-						printf("%s\n", path);
-						arry[contador]=strdup(path);
+						//añado el nombre del fichero al array
+						arry[contador]=strdup(ent->d_name);
 						contador++;
 					}
 				}
@@ -83,33 +84,87 @@ FindFiles(char* directorio, char* arry[], char* term){
 	return contador;
 }
 
-void
+/* CREAR EL ARCHIVO CON LA EXTENSION TERM*/
+char*
 CreatFile(char* fichero, char* term){
 	int fw;
 	char* nameFile;
 	char* saveptr;
 	char *token;
-
-	token=strtok_r(fichero, ".", &saveptr);
+	char* archivo;
+	archivo=strdup(fichero);
+	token=strtok_r(archivo, ".", &saveptr);
 
 	nameFile = malloc (strlen(token)+strlen(term)+1);
 	sprintf(nameFile,"%s%s",token, term);
-	printf("fichero: %s %s\n", token, nameFile);
 	fw=creat(nameFile, 0660);
 	if(fw<0){
 		fprintf(stderr, "Error al crear %s\n", nameFile);
 	}
-	free(nameFile);
+	//free(nameFile);
+	return nameFile;
+}
+
+/*void
+EjecutarFichero(char* fichero){
+	abrirfichero
+	leerlineas
+	ejecutarlineas
+	redirigirsalida
+
+}*/
+
+FILE*
+OpenFile(char* archivo){
+	printf("%s\n",archivo );
+	return fopen(archivo, "r");
+}
+
+int 
+CloseFile(FILE* fd){
+	return fclose(fd);
+}
+
+
+void
+ReadLines(char* archivo, char* file_out){
+	FILE* fd_in;
+	char milinea[MAXLINEA];
+	char* linea=NULL;
+	//abrir el archivo
+	fd_in=OpenFile(archivo);
+	if (fd_in==NULL){
+		fprintf(stderr, "No se puede abrir el archivo %s\n", archivo);
+		//retornar error
+	}
+	//leer linea a linea
+	while(feof(fd_in)!=1){
+		linea=fgets(milinea, sizeof(milinea), fd_in);
+		if(linea!=NULL){
+			printf("%s",linea);
+		}	
+	}
+	//cerrar el archivo
+	if(CloseFile(fd_in)<0){
+		fprintf(stderr, "No se puede cerrar el archivo %s\n", archivo);
+	}
+	
 }
 
 void
 ProcesarFichero(char* fichero){
-	printf("procesar fichero\n");
-	printf("creamos el archivo .out\n");
-	CreatFile(fichero, OUT);
+	char* file_out;
+	char* file_ok;
+	//creamos el archivo .out
+	file_out=CreatFile(fichero, OUT);
+	//procesar fichero (abrir leer ejecutar y cerrar)
+	ReadLines(fichero, file_out);
 	printf("miramos si existe .ok\n");
-	CreatFile(fichero, OK);
-	printf("test correcto o incorrecto\n");
+	// if test correcto
+		file_ok=CreatFile(fichero, OK);
+		printf("%s: test correcto\n", fichero);
+	//else 
+		printf("%s: test incorrecto\n", fichero);
 }
 
 
