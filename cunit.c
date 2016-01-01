@@ -158,7 +158,7 @@ separar_tokens(char* linea, Comando* cadena){
 
 /*FORK PARA EJECUTAR EL COMANDO*/
 void
-forky(char* path, Comando* command){
+forky(char* path, Comando* command, int fd_out){
 	int  sts;
 	int pid;
 	
@@ -167,7 +167,10 @@ forky(char* path, Comando* command){
 	case -1:
 		err(1, "cannt create more forks");
 		break;
-	case 0:  
+	case 0:
+		dup2(fd_out,1);
+		dup2(fd_out,2);
+		close(fd_out);
 		execv (path, command->arg);
 		err(1,"execv failed");
 	default:
@@ -207,14 +210,14 @@ create_path(char* argv){
 
 /* EJECUTA */
 void
-EjecutarLinea(char* linea){
+EjecutarLinea(char* linea, int fd_out){
 	//tokenizar la linea para que sea como quiero
 	char* path;
 	Comando* cadena;
 	cadena=(Comando*)malloc(512*sizeof(Comando));
 	cadena=separar_tokens(linea, cadena);
 	path=create_path(cadena->command);
-	forky(path, cadena);
+	forky(path, cadena, fd_out);
 	/*if(strcmp(cadena->command, "cd")==0){
 		cambio_directorio(linea);
 		return -2;
@@ -228,7 +231,7 @@ EjecutarLinea(char* linea){
 
 /* LEER LINEAS DEL FICHERO*/
 void
-ReadLines(char* archivo, char* file_out){
+ReadLines(char* archivo, int fd_out){
 	FILE* fd_in;
 	char milinea[MAXLINEA];
 	char* linea=NULL;
@@ -250,7 +253,7 @@ ReadLines(char* archivo, char* file_out){
 				linea[lon-1]='\0';
 			};
 			//		
-			EjecutarLinea(linea);
+			EjecutarLinea(linea, fd_out);
 		}	
 	}
 	//cerrar el archivo
@@ -283,9 +286,11 @@ ProcesarFichero(char* fichero){
 	int fd_out, fd_ok;
 	//creamos el archivo .out
 	file_out=ExtensionFile(fichero, OUT);
-	//CreatFile(file_out);
+	CreatFile(file_out);
+	fd_out=open(file_out, O_WRONLY);
 	//procesar fichero (abrir leer ejecutar y cerrar)
-	ReadLines(fichero, file_out);
+	ReadLines(fichero, fd_out);
+	close(fd_out);
 	file_ok=ExtensionFile(fichero, OK);
 	if(ExistsFile(file_ok)){
 		printf("existe\n");
