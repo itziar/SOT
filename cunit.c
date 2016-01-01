@@ -151,8 +151,58 @@ separar_tokens(char* linea, Comando* cadena){
 		};*/
 		i++;
 		cadena->arg[i]=token;
-	};
+	}
 	return cadena;
+}
+
+
+/*FORK PARA EJECUTAR EL COMANDO*/
+void
+forky(char* path, Comando* command){
+	int  sts;
+	int pid;
+	
+	pid=fork();
+	switch(pid){
+	case -1:
+		err(1, "cannt create more forks");
+		break;
+	case 0:  
+		execv (path, command->arg);
+		err(1,"execv failed");
+	default:
+		while(wait(&sts)!=pid){
+				;
+		}
+	}
+}
+
+char*
+create_path(char* argv){
+	char* listcommand[]={"/bin", "/usr/bin", "/usr/local/bin"};
+	int no_ok=1;
+	int i=0;
+	int lon_listcom;
+	int lon_com;
+	int longtotal;
+	char* path;
+	char* commando;
+	lon_com=strlen(argv);
+	while(i<3 && no_ok){
+		lon_listcom=strlen(listcommand[i]);
+		longtotal=lon_listcom+lon_com+1;
+		commando=malloc(longtotal);
+		sprintf(commando, "%s/%s",listcommand[i], argv);
+		no_ok=access(commando, X_OK);
+		if(no_ok){ 
+			free(commando);		
+			i++;
+		}else{
+			path=strdup(commando);
+			free(commando);
+		};
+	};
+	return path;
 };
 
 /* EJECUTA */
@@ -163,12 +213,8 @@ EjecutarLinea(char* linea){
 	Comando* cadena;
 	cadena=(Comando*)malloc(512*sizeof(Comando));
 	cadena=separar_tokens(linea, cadena);
-	int i=0;
-	printf("%s\n", cadena->command);
-	while(cadena->arg[i]!=NULL){
-		printf("%s\n", cadena->arg[i]);
-		i++;
-	}
+	path=create_path(cadena->command);
+	forky(path, cadena);
 	/*if(strcmp(cadena->command, "cd")==0){
 		cambio_directorio(linea);
 		return -2;
@@ -186,6 +232,7 @@ ReadLines(char* archivo, char* file_out){
 	FILE* fd_in;
 	char milinea[MAXLINEA];
 	char* linea=NULL;
+	int lon;
 
 	//abrir el archivo
 	fd_in=fopen(archivo, "r");
@@ -196,11 +243,14 @@ ReadLines(char* archivo, char* file_out){
 	//leer linea a linea
 	while(feof(fd_in)!=1){
 		linea=fgets(milinea, sizeof(milinea), fd_in);
-		if(linea!=NULL){
-			printf("linea\n" );
+		if(linea!=NULL && strcmp(linea, "\n")!=0){ //lineas en blanco
+			lon=strlen(linea);
+			//quitar \n
+			if(linea[lon-1]=='\n'){
+				linea[lon-1]='\0';
+			};
+			//		
 			EjecutarLinea(linea);
-			printf("----\n");
-
 		}	
 	}
 	//cerrar el archivo
@@ -222,7 +272,6 @@ ReadWrite(int fd_reader, int fd_writer){
 		if(nr < 0)
 			err(1, "bad reading");
 		if(nr > 0)
-			printf("%s\n", buffer);
 			write(fd_writer, buffer, nr);
 	}
 }
