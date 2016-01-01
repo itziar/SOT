@@ -125,6 +125,28 @@ ExistsFile(char* fichero){
 	}
 }
 
+/* REEMPLAZA $ POR SU VALOR */
+char*
+ConvertDollarVar(char* palabra){
+	char* valor;
+	char* variable;
+
+	valor=strchr(palabra,'$');
+	if(valor!=NULL){
+		valor[0]='\0';
+		valor++;
+		variable=getenv(valor);
+		if(!variable){
+			fprintf(stderr, "error: var %s does not exist\n", palabra );
+			return NULL;
+		}else{
+			return variable;
+		}
+	}
+	return NULL;
+}
+
+
 /* SEPARAR POR ESPACIOS */
 Comando*
 separar_tokens(char* linea, Comando* cadena){
@@ -134,9 +156,9 @@ separar_tokens(char* linea, Comando* cadena){
 	//char* pch;
 	token=strtok_r(linea, DELIMITERS, &saveptr);
 	
-	/*if((pch=convert_dollar_var(token))){
+	if((pch=ConvertDollarVar(token))){
 		token=pch;
-	};*/
+	};
 	cadena->command=token;
 
 	i=0;
@@ -144,11 +166,11 @@ separar_tokens(char* linea, Comando* cadena){
 
 	while(token){
 		token=strtok_r(saveptr, DELIMITERS, &saveptr);
-		/*if(token){
-			if((pch=convert_dollar_var(token))){
+		if(token){
+			if((pch=ConvertDollarVar(token))){
 				token=pch;
 			};
-		};*/
+		};
 		i++;
 		cadena->arg[i]=token;
 	}
