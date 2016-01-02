@@ -125,6 +125,12 @@ ExistsFile(char* fichero){
 	}
 }
 
+//es var entorno
+int
+dollar(char c){
+	return (c=='$');
+};
+
 /* REEMPLAZA $ POR SU VALOR */
 char*
 ConvertDollarVar(char* palabra){
@@ -147,12 +153,80 @@ ConvertDollarVar(char* palabra){
 }
 
 
+/* COMANDO CD */
+//IMPLEMENTACION CD------------------------------------------------------------------------------
+
+//para cambiar a /HOME
+char*
+getEnv(char* argv){
+	char* env;
+	env=getenv(argv);
+	if(env!=NULL){
+		return env;
+	}else{
+		return(NULL);
+	}
+};
+
+//CAMBIAR DIRECTORIO
+int
+change_directory(char* directory){
+	return chdir(directory);
+};
+
+//PROGRAMA PRINCIPAL CD
+void
+ChangeDirectory(Comando* comando){
+	char* path;
+	int error;
+	char buf[1024];
+	char dir[1024];
+
+	if(comando->arg[1]!=NULL){
+		if(dollar(comando->arg[1][0])){
+			path=ConvertDollarVar(comando->arg[1]);
+			if(path!=NULL){
+				fprintf(stderr, "Error: cant change directory %s\n", path);
+			};
+		};
+		if(comando->arg[1][0]!='/'){
+			getcwd(buf, sizeof(buf));
+			sprintf(dir, "%s/%s", buf, comando->arg[1]);
+			error=change_directory(dir);
+			if(error){
+				fprintf(stderr, "Error: cant change directory %s\n", dir);
+			}
+		}else{
+			path=getEnv("HOME");
+			sprintf(dir, "%s%s", path, comando->arg[1]);
+			error=change_directory(dir);
+			if(error){
+				fprintf(stderr, "Error: cant change directory %s\n", dir);
+
+			}
+		};
+	}else{
+		path=getEnv("HOME");
+		error=change_directory(path);
+		if(error){
+			fprintf(stderr, "Error: cant change directory %s\n", path);
+		};	
+
+		
+	};
+};
+
+//FIN DE CD--------------------------------------------------------------------------------------
+
+
 /* SEPARAR POR ESPACIOS */
 Comando*
 separar_tokens(char* linea, Comando* cadena){
 	char* saveptr;
 	char* token;
 	int i;
+	char* pch;
+	
 	//char* pch;
 	token=strtok_r(linea, DELIMITERS, &saveptr);
 	
@@ -190,9 +264,9 @@ forky(char* path, Comando* command, int fd_out){
 		err(1, "cannt create more forks");
 		break;
 	case 0:
-		dup2(fd_out,1);
+		/*dup2(fd_out,1);
 		dup2(fd_out,2);
-		close(fd_out);
+		close(fd_out);*/
 		execv (path, command->arg);
 		err(1,"execv failed");
 	default:
@@ -220,9 +294,11 @@ create_path(char* argv){
 		sprintf(commando, "%s/%s",listcommand[i], argv);
 		no_ok=access(commando, X_OK);
 		if(no_ok){ 
+			//printf("aqui %s\n", commando);
 			free(commando);		
 			i++;
 		}else{
+			//printf("ultimo %s\n", commando);
 			path=strdup(commando);
 			free(commando);
 		};
@@ -232,23 +308,24 @@ create_path(char* argv){
 
 /* EJECUTA */
 void
-EjecutarLinea(char* linea, int fd_out){
+EjecutarLinea(char* linea, int fd_out, int contador){
 	//tokenizar la linea para que sea como quiero
 	char* path;
 	Comando* cadena;
+
 	cadena=(Comando*)malloc(512*sizeof(Comando));
 	cadena=separar_tokens(linea, cadena);
-	path=create_path(cadena->command);
-	forky(path, cadena, fd_out);
-	/*if(strcmp(cadena->command, "cd")==0){
-		cambio_directorio(linea);
-		return -2;
+	if(strcmp(cadena->command, "cd")==0){
+		if (contador==0){
+			ChangeDirectory(cadena);
+		}else{
+			fprintf(stderr, "El comando cd debe estar al principio de fichero\n" );
+		}
 	}else{
-		path=create_path(linea->command);
-		forky(path, linea);
-		return fp;
+		path=create_path(cadena->command);
+		forky(path, cadena, fd_out);
+		//return fp;
 	};
-	ejecutar con forky*/
 }
 
 /* LEER LINEAS DEL FICHERO*/
@@ -258,6 +335,7 @@ ReadLines(char* archivo, int fd_out){
 	char milinea[MAXLINEA];
 	char* linea=NULL;
 	int lon;
+	int contador=0;
 
 	//abrir el archivo
 	fd_in=fopen(archivo, "r");
@@ -275,7 +353,8 @@ ReadLines(char* archivo, int fd_out){
 				linea[lon-1]='\0';
 			};
 			//		
-			EjecutarLinea(linea, fd_out);
+			EjecutarLinea(linea, fd_out, contador);
+			contador++;
 		}	
 	}
 	//cerrar el archivo
@@ -304,25 +383,25 @@ ReadWrite(int fd_reader, int fd_writer){
 /* CREAR EL FICHERO .OUT Y SI ESO .OK*/
 void
 ProcesarFichero(char* fichero){
-	char *file_out, *file_ok;
-	int fd_out, fd_ok;
+	char *file_out; //, *file_ok;
+	int fd_out;//, fd_ok;
 	//creamos el archivo .out
 	file_out=ExtensionFile(fichero, OUT);
 	CreatFile(file_out);
 	fd_out=open(file_out, O_WRONLY);
 	//procesar fichero (abrir leer ejecutar y cerrar)
 	ReadLines(fichero, fd_out);
-	close(fd_out);
-	file_ok=ExtensionFile(fichero, OK);
-	if(ExistsFile(file_ok)){
-		printf("existe\n");
+	//close(fd_out);
+	//file_ok=ExtensionFile(fichero, OK);
+	/*if(ExistsFile(file_ok)){
+		//printf("existe\n");
 		// if test correcto
 //		file_ok=CreatFile(fichero);
 		printf("%s: test correcto\n", fichero);
 	//else 
 		printf("%s: test incorrecto\n", fichero);
 	}else{
-		printf("no existe\n");
+		//printf("no existe\n");
 		//creamos el archivo .ok
 		CreatFile(file_ok);
 		//abrimos los ficheros para obtener los fd
@@ -337,7 +416,7 @@ ProcesarFichero(char* fichero){
 		}else{
 			printf("No se puede ni leer o escribir\n");
 		}
-	}
+	}*/
 	
 }
 
