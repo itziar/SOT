@@ -129,7 +129,7 @@ ExistsFile(char* fichero){
 int
 dollar(char c){
 	return (c=='$');
-};
+}
 
 /* REEMPLAZA $ POR SU VALOR */
 char*
@@ -166,13 +166,13 @@ getEnv(char* argv){
 	}else{
 		return(NULL);
 	}
-};
+}
 
 //CAMBIAR DIRECTORIO
 int
 change_directory(char* directory){
 	return chdir(directory);
-};
+}
 
 //PROGRAMA PRINCIPAL CD
 void
@@ -187,8 +187,8 @@ ChangeDirectory(Comando* comando){
 			path=ConvertDollarVar(comando->arg[1]);
 			if(path!=NULL){
 				fprintf(stderr, "Error: cant change directory %s\n", path);
-			};
-		};
+			}
+		}
 		if(comando->arg[1][0]!='/'){
 			getcwd(buf, sizeof(buf));
 			sprintf(dir, "%s/%s", buf, comando->arg[1]);
@@ -204,17 +204,15 @@ ChangeDirectory(Comando* comando){
 				fprintf(stderr, "Error: cant change directory %s\n", dir);
 
 			}
-		};
+		}
 	}else{
 		path=getEnv("HOME");
 		error=change_directory(path);
 		if(error){
 			fprintf(stderr, "Error: cant change directory %s\n", path);
-		};	
-
-		
-	};
-};
+		}
+	}
+}
 
 //FIN DE CD--------------------------------------------------------------------------------------
 
@@ -232,7 +230,7 @@ separar_tokens(char* linea, Comando* cadena){
 	
 	if((pch=ConvertDollarVar(token))){
 		token=pch;
-	};
+	}
 	cadena->command=token;
 
 	i=0;
@@ -243,8 +241,8 @@ separar_tokens(char* linea, Comando* cadena){
 		if(token){
 			if((pch=ConvertDollarVar(token))){
 				token=pch;
-			};
-		};
+			}
+		}
 		i++;
 		cadena->arg[i]=token;
 	}
@@ -276,35 +274,62 @@ forky(char* path, Comando* command, int fd_out){
 	}
 }
 
+int 
+is_separadordospuntos(char character){
+	return (character==':');
+}
+
+int
+mytokenizedospuntos(char* str, char** args){
+	int long_str, nargs, i, blanco;
+	long_str=strlen(str);
+	nargs=0;
+	i=0;
+	blanco=1;
+	while(i<long_str){
+		if(is_separadordospuntos(str[i])){
+			if(!blanco){
+				str[i]='\0';
+				blanco=1;
+			}
+		}else{ //es caracter
+			if(blanco){
+				args[nargs]=&str[i];
+				nargs++;
+				blanco=0;
+			}
+		}
+		i++;
+	}
+	return nargs;
+}
+
 char*
-create_path(char* argv){
-	char* listcommand[]={"/bin", "/usr/bin", "/usr/local/bin"};
-	int no_ok=1;
+CreatePath(char* argv){
+	char commando[1024];
+	char* str=getenv("PATH");
+	char* listcommand[1024];
+	int nargs=mytokenizedospuntos(str, listcommand);
+	char buf[1024];
+	int ok=1;
 	int i=0;
-	int lon_listcom;
-	int lon_com;
-	int longtotal;
-	char* path;
-	char* commando;
-	lon_com=strlen(argv);
-	while(i<3 && no_ok){
-		lon_listcom=strlen(listcommand[i]);
-		longtotal=lon_listcom+lon_com+1;
-		commando=malloc(longtotal);
+	//sacar el directorio actual
+	getcwd(buf, sizeof(buf));
+	sprintf(commando,"%s/%s", buf, argv);
+	ok=access(commando,X_OK);
+	if(!ok){
+		return strdup(commando);
+	}
+	while(i<nargs && ok){
 		sprintf(commando, "%s/%s",listcommand[i], argv);
-		no_ok=access(commando, X_OK);
-		if(no_ok){ 
-			//printf("aqui %s\n", commando);
-			free(commando);		
-			i++;
-		}else{
-			//printf("ultimo %s\n", commando);
-			path=strdup(commando);
-			free(commando);
-		};
-	};
-	return path;
-};
+		ok=access(commando, X_OK);
+		if(!ok){			
+			return strdup(commando);
+		}
+		i++;
+	}
+	return NULL;
+}
 
 /* EJECUTA */
 void
@@ -322,10 +347,10 @@ EjecutarLinea(char* linea, int fd_out, int contador){
 			fprintf(stderr, "El comando cd debe estar al principio de fichero\n" );
 		}
 	}else{
-		path=create_path(cadena->command);
+		path=CreatePath(cadena->command);
 		forky(path, cadena, fd_out);
 		//return fp;
-	};
+	}
 }
 
 /* LEER LINEAS DEL FICHERO*/
@@ -351,7 +376,7 @@ ReadLines(char* archivo, int fd_out){
 			//quitar \n
 			if(linea[lon-1]=='\n'){
 				linea[lon-1]='\0';
-			};
+			}
 			//		
 			EjecutarLinea(linea, fd_out, contador);
 			contador++;
@@ -438,7 +463,7 @@ main(int argc, char *argv[])
 			printf("Borrar %d ficheros .ok\n", nfiles);
 			exit(EXIT_SUCCESS);
 		}
-	};
+	}
 	nfiles=FindFiles(PWD, arry, TST);
 	if(nfiles<0){
 		printf("No hay ningun fichero .tst\n");
