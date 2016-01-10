@@ -181,7 +181,7 @@ ChangeDirectory(Comando* comando){
 	int error;
 	char buf[1024];
 	char dir[1024];
-
+	char cwd[1024];
 	if(comando->arg[1]!=NULL){
 		if(dollar(comando->arg[1][0])){
 			path=ConvertDollarVar(comando->arg[1]);
@@ -196,10 +196,8 @@ ChangeDirectory(Comando* comando){
 			if(error){
 				fprintf(stderr, "Error: cant change directory %s\n", dir);
 			}
-		}else{
-			path=getEnv("HOME");
-			sprintf(dir, "%s%s", path, comando->arg[1]);
-			error=change_directory(dir);
+		}else{			
+			error=change_directory(comando->arg[1]);
 			if(error){
 				fprintf(stderr, "Error: cant change directory %s\n", dir);
 
@@ -212,6 +210,7 @@ ChangeDirectory(Comando* comando){
 			fprintf(stderr, "Error: cant change directory %s\n", path);
 		}
 	}
+	if (getcwd(cwd, sizeof(cwd)) != NULL)	printf("directorio actual%s\n",cwd);
 }
 
 //FIN DE CD--------------------------------------------------------------------------------------
