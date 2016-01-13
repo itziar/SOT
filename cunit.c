@@ -33,7 +33,7 @@ char DELIMITERS[] = " \t"; //delimitadores para strtok
 typedef struct Comando{
 	char* command;
 	int nargs;
-	char* arg[20];
+	char* arg[MAXFILES];
 }Comando;
 
 
@@ -106,13 +106,15 @@ ExtensionFile(char* fichero, char* term){
 }
 
 /* CREAR ARCHIVO DADO */
-void
+int
 CreatFile(char* nameFile){
-	int fw;
-	fw=creat(nameFile, 0660);
-	if(fw<0){
-		fprintf(stderr, "Error al crear %s\n", nameFile);
+	int fd;
+	fd=creat(nameFile, 0660);
+	if(fd<0){
+		err(1, "Error al crear %s\n", nameFile);
 	}
+	return fd;
+
 }
 
 /* EXITE O NO UN FICHERO DADO*/
@@ -309,7 +311,7 @@ void
 forky(Comando listcommand[], int contador, int fd_out){
 	int pid;
 	int fp[2*(contador-1)]; //necesitamos contador-1 pipes * 2 xk es doble fp[2]
-	//dup2(fd_out, 2); //salida de error a fd_out
+	dup2(fd_out, 2); //salida de error a fd_out
 	//creo los pipes necesarios
 	int i;
 	int j;
@@ -337,7 +339,7 @@ forky(Comando listcommand[], int contador, int fd_out){
 			}
 			//ultimo comando salida a fd_out
 			if(j==(contador-1)){
-				//dup2(fd_out, 1);
+				dup2(fd_out, 1);
 				//close(fd_out);
 			}
 			// conecto entradas y salidas
@@ -353,8 +355,8 @@ forky(Comando listcommand[], int contador, int fd_out){
 			for (q=0; q<2*(contador-1); q++){
 				close(fp[q]);
 			}
+
 			path=CreatePath(listcommand[j].command);
-			//printf("path %s\n", path);
 			execv (path, listcommand[j].arg);
 			err(1,"execv failed");
 		default:
@@ -408,9 +410,7 @@ ReadLines(char* archivo, int fd_out){
 			contador++;
 		}	
 	}
-
 	EjecutarLineas(listcommand, contador, fd_out);
-
 	//cerrar el archivo
 	if(fclose(fd_in)<0){
 		fprintf(stderr, "No se puede cerrar el archivo %s\n", archivo);
@@ -431,8 +431,7 @@ ReadWrite(int fd_reader, int fd_writer){
 			err(1, "bad reading");
 		if(nr > 0){
 			write(fd_writer, buffer, nr);
-		}
-			
+		}		
 	}
 }
 
@@ -463,11 +462,9 @@ Comparate(char* file_out, char* file_ok){
 	}
  
 	if(ch_out == ch_ok){
-		printf("Files are identical n");
 		equal=1;
 	}
 	else if (ch_out != ch_ok){
-		printf("Files are Not identical n");
 		equal=0;
 	}
 	
@@ -477,48 +474,64 @@ Comparate(char* file_out, char* file_ok){
 }
 
 /* CREAR EL FICHERO .OUT Y SI ESO .OK*/
-void
-ProcesarFichero(char* fichero){
-	char *file_out, *file_ok;
-	int fd_out, fd_ok;
-	int success;
-	//creamos el archivo .out
-	file_out=ExtensionFile(fichero, OUT);
-	CreatFile(file_out);
-	fd_out=open(file_out, O_WRONLY);
-	//procesar fichero (abrir leer ejecutar y cerrar)
-	ReadLines(fichero, fd_out);
-	//close(fd_out); //cierro fd_out de escritura
-	//fprintf(stderr, "aaa %s %d\n", file_out, fd_out);
-	//fd_out=open(file_out, O_RDONLY); //abro el fichero para lectura
-	file_ok=ExtensionFile(fichero, OK);
+int
+check_ok(char* file_out, int fd_out, char* file_ok){
+	int success, fd_ok;
 	if(ExistsFile(file_ok)){
-		printf("existe\n");
 		success=Comparate(file_out, file_ok);
-//		file_ok=CreatFile(fichero);
-		printf("%s: test correcto\n", fichero);
-	//else 
-		printf("%s: test incorrecto\n", fichero);
+		if(success){
+			return 1;
+		}else{
+			return 0;
+		}
 	}else{
 		printf("no existe\n");
 		//creamos el archivo .ok
-		CreatFile(file_ok);
-		//abrimos los ficheros para obtener los fd
-		fd_out=open(file_out, O_RDONLY);
-		fd_ok=open(file_ok, O_WRONLY);
+		fd_ok=CreatFile(file_ok);
 		//metemos el contenido de .out en .ok
 		if(fd_out>0 && fd_ok>0){
 			ReadWrite(fd_out, fd_ok);
 			//cerramos los fd
 			if (close(fd_out)<0 || close(fd_ok)<0)
 				printf("error al cerrar los descriptores\n");
+				return 0;
 		}else{
 			printf("No se puede ni leer o escribir\n");
+			return 0;
 		}
 	}
-	
+	close(fd_ok);
+	return 1;
 }
 
+void
+forky_fichs(char* fichero_tst){
+	char *file_out, *file_ok;
+	int fd_out, test_correct;
+	int pid;
+	file_out=ExtensionFile(fichero_tst, OUT);
+	file_ok=ExtensionFile(fichero_tst, OK);
+	fd_out=CreatFile(file_out);
+
+	pid=fork();
+	switch(pid){
+	case -1:
+		err(1, "cant create more forks");
+	case 0:
+		ReadLines(fichero_tst, fd_out);
+		break;
+	default:
+		wait(NULL);
+		//lo de los ficheros
+		test_correct=check_ok(file_out, fd_out, file_ok);
+		if(test_correct){
+			printf("%s: Test correcto\n", fichero_tst );
+		}else{
+			printf("%s: Test incorrecto\n", fichero_tst);
+		}
+	}
+	close(fd_out);
+}
 
 //MAIN DEL PROGRAMA PRINCIPAL--------------------------------------------------------------------
 
@@ -529,6 +542,7 @@ main(int argc, char *argv[])
 	argv++;
 	char* arry[MAXFILES];
 	int nfiles;
+	int i;
 	if (argc==1){
 		if (strcmp(argv[0],"-c")==0){
 			nfiles=FindFiles(PWD, arry, OUT);
@@ -543,8 +557,8 @@ main(int argc, char *argv[])
 		printf("No hay ningun fichero .tst\n");
 		exit(EXIT_SUCCESS);
 	}
-	// para cada fichero concurrentemente thread o fork? mejor thread
-	ProcesarFichero(arry[0]);
-
+	for(i=0; i<nfiles; i++){
+		forky_fichs(arry[i]);
+	}
 	exit(EXIT_SUCCESS);
-};
+}
