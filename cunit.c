@@ -27,13 +27,13 @@
 
 #define MAXLINEA 256
 
-const char DELIMITERS[] = " \t"; //delimitadores para strtok
+char DELIMITERS[] = " \t"; //delimitadores para strtok
 
 //estructura de la shell comando argumentos
 typedef struct Comando{
 	char* command;
 	int nargs;
-	char* arg[];
+	char* arg[20];
 }Comando;
 
 
@@ -218,24 +218,23 @@ ChangeDirectory(Comando* comando){
 
 /* SEPARAR POR ESPACIOS */
 Comando*
-separar_tokens(char* linea, Comando* cadena){
+SepararTokens(char* linea, Comando* cadena){
 	char* saveptr;
 	char* token;
 	int i;
 	char* pch;
+	char *aux=(char*) malloc(1024*sizeof(char));
+	strcpy(aux,linea);
 	
-	//char* pch;
-	token=strtok_r(linea, DELIMITERS, &saveptr);
+	token=strtok_r(aux, DELIMITERS, &saveptr);
 	
 	if((pch=ConvertDollarVar(token))){
 		token=pch;
 	}
 	cadena->command=token;
-
 	i=0;
 	cadena->arg[i]=token;
-
-	while(token){
+	while(token!=NULL){
 		token=strtok_r(saveptr, DELIMITERS, &saveptr);
 		if(token){
 			if((pch=ConvertDollarVar(token))){
@@ -246,31 +245,6 @@ separar_tokens(char* linea, Comando* cadena){
 		cadena->arg[i]=token;
 	}
 	return cadena;
-}
-
-
-/*FORK PARA EJECUTAR EL COMANDO*/
-void
-forky(char* path, Comando* command, int fd_out){
-	int  sts;
-	int pid;
-	
-	pid=fork();
-	switch(pid){
-	case -1:
-		err(1, "cannt create more forks");
-		break;
-	case 0:
-		/*dup2(fd_out,1);
-		dup2(fd_out,2);
-		close(fd_out);*/
-		execv (path, command->arg);
-		err(1,"execv failed");
-	default:
-		while(wait(&sts)!=pid){
-				;
-		}
-	}
 }
 
 int 
@@ -330,25 +304,76 @@ CreatePath(char* argv){
 	return NULL;
 }
 
+/*FORK PARA EJECUTAR EL COMANDO*/
+void
+forky(Comando listcommand[], int contador, int fd_out){
+	int pid;
+	int fp[2*(contador-1)]; //necesitamos contador-1 pipes * 2 xk es doble fp[2]
+	//dup2(fd_out, 2); //salida de error a fd_out
+	//creo los pipes necesarios
+	int i;
+	int j;
+	//int q;
+	char* path;
+	for(i=0; i<(contador-1); i++){
+		if(pipe(fp+i*2)<0){
+			err(1, "cant create more pipes \n" );
+		}
+	}
+	for(j=0; j< contador; j++){
+		pid=fork();
+		switch(pid){
+		case -1:
+			err(1, "cannt create more forks");		
+		case 0:
+			//es el primer comando entrada a dev/null
+			if(j==0){
+				int null_in=open("/dev/null", O_RDONLY);
+				if(null_in<0){
+					err(1, "cant open /dev/null");
+				}
+				dup2(null_in, 0);
+				close(null_in);
+			}
+			//ultimo comando salida a fd_out
+			if(j==(contador-1)){
+				dup2(fd_out, 1);
+			}
+			// conecto entradas y salidas
+			if(j!=0){
+				dup2(fp[(j-1)*2], 0); //la entrada es el pipe anterior (pares)
+			}
+			if(j!=(contador-1)){
+				dup2(fp[j*2+1], 1); // la salida al siguiente pipe (impares)
+			}
+
+			
+			int q;
+			for (q=0; q<2*(contador-1); q++){
+				close(fp[q]);
+			}
+			path=CreatePath(listcommand[j].command);
+			//printf("path %s\n", path);
+			execv (path, listcommand[j].arg);
+			err(1,"execv failed");
+		default:
+			;
+		}
+	}
+}
+
+
 /* EJECUTA */
 void
-EjecutarLinea(char* linea, int fd_out, int contador){
-	//tokenizar la linea para que sea como quiero
-	char* path;
-	Comando* cadena;
-
-	cadena=(Comando*)malloc(512*sizeof(Comando));
-	cadena=separar_tokens(linea, cadena);
-	if(strcmp(cadena->command, "cd")==0){
+EjecutarLineas(Comando listcommand[], int contador, int fd_out){	
+	if(strcmp(listcommand->command, "cd")==0){
 		if (contador==0){
-			ChangeDirectory(cadena);
+			ChangeDirectory(listcommand);
 		}else{
 			fprintf(stderr, "El comando cd debe estar al principio de fichero\n" );
 		}
 	}else{
-		path=CreatePath(cadena->command);
-		forky(path, cadena, fd_out);
-		//return fp;
+		forky(listcommand, contador, fd_out);
 	}
 }
 
@@ -360,6 +385,7 @@ ReadLines(char* archivo, int fd_out){
 	char* linea=NULL;
 	int lon;
 	int contador=0;
+	Comando listcommand[MAXLINEA];
 
 	//abrir el archivo
 	fd_in=fopen(archivo, "r");
@@ -376,11 +402,14 @@ ReadLines(char* archivo, int fd_out){
 			if(linea[lon-1]=='\n'){
 				linea[lon-1]='\0';
 			}
-			//		
-			EjecutarLinea(linea, fd_out, contador);
+			//			
+			SepararTokens(linea, &listcommand[contador]);
 			contador++;
 		}	
 	}
+
+	EjecutarLineas(listcommand, contador, fd_out);
+
 	//cerrar el archivo
 	if(fclose(fd_in)<0){
 		fprintf(stderr, "No se puede cerrar el archivo %s\n", archivo);
