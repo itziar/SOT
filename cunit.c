@@ -337,7 +337,8 @@ forky(Comando listcommand[], int contador, int fd_out){
 			}
 			//ultimo comando salida a fd_out
 			if(j==(contador-1)){
-				dup2(fd_out, 1);
+				//dup2(fd_out, 1);
+				//close(fd_out);
 			}
 			// conecto entradas y salidas
 			if(j!=0){
@@ -428,33 +429,78 @@ ReadWrite(int fd_reader, int fd_writer){
 			break;
 		if(nr < 0)
 			err(1, "bad reading");
-		if(nr > 0)
+		if(nr > 0){
 			write(fd_writer, buffer, nr);
+		}
+			
 	}
+}
+
+int
+Comparate(char* file_out, char* file_ok){
+	//para comparar comparo caracter a caracter
+	FILE* fd_out;
+	FILE* fd_ok;
+	int equal;
+	char ch_out, ch_ok;
+	fd_out=fopen(file_out, "r");
+	fd_ok=fopen(file_ok, "r");
+	
+	if(fd_out == NULL) {
+		printf("Cannot open %s for reading ", file_out);
+	}
+	
+	if(fd_ok == NULL) {
+		printf("Cannot open %s for reading ", file_ok);
+	}
+	
+	ch_out = getc(fd_out);
+	ch_ok = getc(fd_ok);
+ 	
+ 	while((ch_out != EOF) && (ch_ok != EOF) && (ch_out == ch_ok)) {
+		ch_out = getc(fd_out);
+		ch_ok = getc(fd_ok);
+	}
+ 
+	if(ch_out == ch_ok){
+		printf("Files are identical n");
+		equal=1;
+	}
+	else if (ch_out != ch_ok){
+		printf("Files are Not identical n");
+		equal=0;
+	}
+	
+	fclose(fd_out);
+	fclose(fd_ok);
+	return equal;
 }
 
 /* CREAR EL FICHERO .OUT Y SI ESO .OK*/
 void
 ProcesarFichero(char* fichero){
-	char *file_out; //, *file_ok;
-	int fd_out;//, fd_ok;
+	char *file_out, *file_ok;
+	int fd_out, fd_ok;
+	int success;
 	//creamos el archivo .out
 	file_out=ExtensionFile(fichero, OUT);
 	CreatFile(file_out);
 	fd_out=open(file_out, O_WRONLY);
 	//procesar fichero (abrir leer ejecutar y cerrar)
 	ReadLines(fichero, fd_out);
-	//close(fd_out);
-	//file_ok=ExtensionFile(fichero, OK);
-	/*if(ExistsFile(file_ok)){
-		//printf("existe\n");
-		// if test correcto
+	//close(fd_out); //cierro fd_out de escritura
+	//fprintf(stderr, "aaa %s %d\n", file_out, fd_out);
+	//fd_out=open(file_out, O_RDONLY); //abro el fichero para lectura
+	file_ok=ExtensionFile(fichero, OK);
+	if(ExistsFile(file_ok)){
+		printf("existe\n");
+		success=Comparate(file_out, file_ok);
 //		file_ok=CreatFile(fichero);
 		printf("%s: test correcto\n", fichero);
 	//else 
 		printf("%s: test incorrecto\n", fichero);
 	}else{
-		//printf("no existe\n");
+		printf("no existe\n");
 		//creamos el archivo .ok
 		CreatFile(file_ok);
 		//abrimos los ficheros para obtener los fd
@@ -469,7 +515,7 @@ ProcesarFichero(char* fichero){
 		}else{
 			printf("No se puede ni leer o escribir\n");
 		}
-	}*/
+	}
 	
 }
 
