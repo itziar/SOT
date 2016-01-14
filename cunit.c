@@ -109,7 +109,7 @@ ExtensionFile(char* fichero, char* term){
 int
 CreatFile(char* nameFile){
 	int fd;
-	fd=creat(nameFile, 0660);
+	fd=open(nameFile, O_RDWR|O_CREAT|O_TRUNC, 0660);
 	if(fd<0){
 		err(1, "Error al crear %s\n", nameFile);
 	}
@@ -145,7 +145,7 @@ ConvertDollarVar(char* palabra){
 		valor++;
 		variable=getenv(valor);
 		if(!variable){
-			fprintf(stderr, "error: var %s does not exist\n", palabra );
+			fprintf(stderr, "error: var %s does not exist\n", valor);
 			return NULL;
 		}else{
 			return variable;
@@ -229,7 +229,6 @@ SepararTokens(char* linea, Comando* cadena){
 	strcpy(aux,linea);
 	
 	token=strtok_r(aux, DELIMITERS, &saveptr);
-	
 	if((pch=ConvertDollarVar(token))){
 		token=pch;
 	}
@@ -372,8 +371,9 @@ EjecutarLineas(Comando listcommand[], int contador, int fd_out){
 	if(strcmp(listcommand->command, "cd")==0){
 		if (contador==0){
 			ChangeDirectory(listcommand);
-		}else{
+		/*}else{
 			fprintf(stderr, "El comando cd debe estar al principio de fichero\n" );
+			*/
 		}
 	}else{
 		forky(listcommand, contador, fd_out);
@@ -428,7 +428,7 @@ ReadWrite(int fd_reader, int fd_writer){
     	if(nr == 0)
 			break;
 		if(nr < 0)
-			err(1, "bad reading");
+			err(1, "cannt read");
 		if(nr > 0){
 			write(fd_writer, buffer, nr);
 		}		
@@ -464,7 +464,7 @@ Comparate(char* file_out, char* file_ok){
 	if(ch_out == ch_ok){
 		equal=1;
 	}
-	else if (ch_out != ch_ok){
+	if (ch_out != ch_ok){
 		equal=0;
 	}
 	
@@ -475,7 +475,7 @@ Comparate(char* file_out, char* file_ok){
 
 /* CREAR EL FICHERO .OUT Y SI ESO .OK*/
 int
-check_ok(char* file_out, int fd_out, char* file_ok){
+check_ok(char* file_out , char* file_ok, int fd_out){
 	int success, fd_ok;
 	if(ExistsFile(file_ok)){
 		success=Comparate(file_out, file_ok);
@@ -485,18 +485,12 @@ check_ok(char* file_out, int fd_out, char* file_ok){
 			return 0;
 		}
 	}else{
-		printf("no existe\n");
 		//creamos el archivo .ok
 		fd_ok=CreatFile(file_ok);
 		//metemos el contenido de .out en .ok
 		if(fd_out>0 && fd_ok>0){
-			ReadWrite(fd_out, fd_ok);
-			//cerramos los fd
-			if (close(fd_out)<0 || close(fd_ok)<0)
-				printf("error al cerrar los descriptores\n");
-				return 0;
+			ReadWrite(fd_out, fd_ok);			
 		}else{
-			printf("No se puede ni leer o escribir\n");
 			return 0;
 		}
 	}
@@ -513,17 +507,18 @@ forky_fichs(char* fichero_tst){
 	file_ok=ExtensionFile(fichero_tst, OK);
 	fd_out=CreatFile(file_out);
 
+
 	pid=fork();
 	switch(pid){
 	case -1:
 		err(1, "cant create more forks");
 	case 0:
 		ReadLines(fichero_tst, fd_out);
-		break;
+		exit(EXIT_SUCCESS);
 	default:
 		wait(NULL);
 		//lo de los ficheros
-		test_correct=check_ok(file_out, fd_out, file_ok);
+		test_correct=check_ok(file_out, file_ok, fd_out);
 		if(test_correct){
 			printf("%s: Test correcto\n", fichero_tst );
 		}else{
