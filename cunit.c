@@ -541,9 +541,15 @@ main(int argc, char *argv[])
 	if (argc==1){
 		if (strcmp(argv[0],"-c")==0){
 			nfiles=FindFiles(PWD, arry, OUT);
-			printf("Borrar %d ficheros .out\n", nfiles);
+			//printf("Borrar %d ficheros .out\n", nfiles);
+			for(i=0; i<nfiles; i++){
+				unlink(arry[i]);
+			}
 			nfiles=FindFiles(PWD, arry, OK);
-			printf("Borrar %d ficheros .ok\n", nfiles);
+			//printf("Borrar %d ficheros .ok\n", nfiles);
+			for(i=0; i<nfiles; i++){
+				unlink(arry[i]);
+			}
 			exit(EXIT_SUCCESS);
 		}
 	}
