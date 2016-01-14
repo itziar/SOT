@@ -183,7 +183,6 @@ ChangeDirectory(Comando* comando){
 	int error;
 	char buf[1024];
 	char dir[1024];
-	char cwd[1024];
 	if(comando->arg[1]!=NULL){
 		if(dollar(comando->arg[1][0])){
 			path=ConvertDollarVar(comando->arg[1]);
@@ -212,7 +211,6 @@ ChangeDirectory(Comando* comando){
 			fprintf(stderr, "Error: cant change directory %s\n", path);
 		}
 	}
-	if (getcwd(cwd, sizeof(cwd)) != NULL)	printf("directorio actual%s\n",cwd);
 }
 
 //FIN DE CD--------------------------------------------------------------------------------------
@@ -248,6 +246,7 @@ SepararTokens(char* linea, Comando* cadena){
 	return cadena;
 }
 
+
 int 
 is_separadordospuntos(char character){
 	return (character==':');
@@ -282,8 +281,10 @@ char*
 CreatePath(char* argv){
 	char commando[1024];
 	char* str=getenv("PATH");
+	char* copia_path=(char*) malloc(1024*sizeof(char));	
 	char* listcommand[1024];
-	int nargs=mytokenizedospuntos(str, listcommand);
+	strcpy(copia_path, str);
+	int nargs=mytokenizedospuntos(copia_path, listcommand);
 	char buf[1024];
 	int ok=1;
 	int i=0;
@@ -306,77 +307,77 @@ CreatePath(char* argv){
 }
 
 /*FORK PARA EJECUTAR EL COMANDO*/
-void
-forky(Comando listcommand[], int contador, int fd_out){
+int
+forky(Comando* command, int fd_ant, int fd_out){
 	int pid;
-	int fp[2*(contador-1)]; //necesitamos contador-1 pipes * 2 xk es doble fp[2]
-	dup2(fd_out, 2); //salida de error a fd_out
-	//creo los pipes necesarios
-	int i;
-	int j;
-	//int q;
+	int fp[2];
 	char* path;
-	for(i=0; i<(contador-1); i++){
-		if(pipe(fp+i*2)<0){
-			err(1, "cant create more pipes \n" );
-		}
+	dup2(fd_out, 2); //salida de error a fd_out
+	if(pipe(fp)<0){
+		err(1, "cant create more pipes \n" );
 	}
-	for(j=0; j< contador; j++){
-		pid=fork();
-		switch(pid){
-		case -1:
-			err(1, "cannt create more forks");		
-		case 0:
-			//es el primer comando entrada a dev/null
-			if(j==0){
-				int null_in=open("/dev/null", O_RDONLY);
-				if(null_in<0){
-					err(1, "cant open /dev/null");
-				}
-				dup2(null_in, 0);
-				close(null_in);
+	pid=fork();
+	switch(pid){
+	case -1:
+		err(1, "cannt create more forks");		
+	case 0:
+		//es el primer comando entrada a dev/null
+		if(fd_ant==0){
+			int null_in=open("/dev/null", O_RDONLY);
+			if(null_in<0){
+				err(1, "cant open /dev/null");
 			}
-			//ultimo comando salida a fd_out
-			if(j==(contador-1)){
-				dup2(fd_out, 1);
-				//close(fd_out);
-			}
-			// conecto entradas y salidas
-			if(j!=0){
-				dup2(fp[(j-1)*2], 0); //la entrada es el pipe anterior (pares)
-			}
-			if(j!=(contador-1)){
-				dup2(fp[j*2+1], 1); // la salida al siguiente pipe (impares)
-			}
-
+			dup2(null_in, 0);
+			close(null_in);
+		}else{
+			dup2(fd_ant, 0);
+			close(fd_ant);
+		}
 			
-			int q;
-			for (q=0; q<2*(contador-1); q++){
-				close(fp[q]);
-			}
-
-			path=CreatePath(listcommand[j].command);
-			execv (path, listcommand[j].arg);
-			err(1,"execv failed");
-		default:
-			;
-		}
-	}
+		close(fp[0]);
+		dup2(fp[1],1);
+		close(fp[1]);
+		path=CreatePath(command->command);
+		execv (path, command->arg);
+		err(1,"execv failed");
+	default:
+		close(fp[1]);	
+		return fp[0];
+	}	
 }
 
-
 /* EJECUTA */
-void
-EjecutarLineas(Comando listcommand[], int contador, int fd_out){	
-	if(strcmp(listcommand->command, "cd")==0){
-		if (contador==0){
-			ChangeDirectory(listcommand);
-		/*}else{
-			fprintf(stderr, "El comando cd debe estar al principio de fichero\n" );
-			*/
+int
+EjecutarLineas(char* cadena, Comando* linea, int fd_ant, int fd_out, int is_primero){	
+	int fp;
+	linea=SepararTokens(cadena, linea);
+	if(strcmp(linea->command, "cd")==0){
+		if(is_primero==0){
+			ChangeDirectory(linea);
+		//}else{
+		//	fprintf(stderr, "El comando cd debe estar al principio de fichero\n" );
 		}
+		return -2;
 	}else{
-		forky(listcommand, contador, fd_out);
+		fp=forky(linea, fd_ant, fd_out);
+		return fp;
+	}
+}
+/* LEE Y ESCRIBE EN DESCRIPTORES DE FICHEROS*/
+void
+ReadWrite(int fd_reader, int fd_writer){
+	int nr;
+	char  buffer[1024];
+		
+	for(;;){
+		nr = read(fd_reader, buffer, sizeof(buffer));
+    	if(nr == 0)
+			break;
+		if(nr < 0)
+			err(1, "cannt read");
+		if(nr > 0){
+			write(fd_writer, buffer, nr);
+		}		
 	}
 }
 
@@ -387,13 +388,13 @@ ReadLines(char* archivo, int fd_out){
 	char milinea[MAXLINEA];
 	char* linea=NULL;
 	int lon;
-	int contador=0;
-	Comando listcommand[MAXLINEA];
-
+	Comando* command;
+	int fp=0;
+	int is_primero=1;
 	//abrir el archivo
 	fd_in=fopen(archivo, "r");
 	if (fd_in==NULL){
-		fprintf(stderr, "No se puede abrir el archivo %s\n", archivo);
+		err(1, "No se puede abrir el archivo %s\n", archivo);
 		//retornar error
 	}
 	//leer linea a linea
@@ -405,34 +406,20 @@ ReadLines(char* archivo, int fd_out){
 			if(linea[lon-1]=='\n'){
 				linea[lon-1]='\0';
 			}
-			//			
-			SepararTokens(linea, &listcommand[contador]);
-			contador++;
+			//		
+			command=(Comando*)malloc(512*sizeof(Comando));
+			fp=EjecutarLineas(linea, command, fp, fd_out, is_primero);
+			free(command);	
+			is_primero=0;
 		}	
 	}
-	EjecutarLineas(listcommand, contador, fd_out);
+	ReadWrite(fp, fd_out);
+	close(fp);
+	close(fd_out);
 	//cerrar el archivo
 	if(fclose(fd_in)<0){
-		fprintf(stderr, "No se puede cerrar el archivo %s\n", archivo);
+		err(1, "No se puede cerrar el archivo %s\n", archivo);
 	}	
-}
-
-
-/* LEE Y ESCRIBE EN DESCRIPTORES DE FICHEROS*/
-void
-ReadWrite(int fd_reader, int fd_writer){
-	int nr;
-	char  buffer[1024];
-	for(;;){
-		nr = read(fd_reader, buffer, sizeof(buffer));
-    	if(nr == 0)
-			break;
-		if(nr < 0)
-			err(1, "cannt read");
-		if(nr > 0){
-			write(fd_writer, buffer, nr);
-		}		
-	}
 }
 
 int
@@ -486,6 +473,7 @@ check_ok(char* file_out , char* file_ok, int fd_out){
 		}
 	}else{
 		//creamos el archivo .ok
+		fd_out=open(file_out, O_RDONLY);
 		fd_ok=CreatFile(file_ok);
 		//metemos el contenido de .out en .ok
 		if(fd_out>0 && fd_ok>0){
@@ -533,6 +521,7 @@ forky_fichs(char* fichero_tst){
 int 
 main(int argc, char *argv[])
 {
+	
 	argc--;
 	argv++;
 	char* arry[MAXFILES];
@@ -554,6 +543,8 @@ main(int argc, char *argv[])
 		}
 	}
 	nfiles=FindFiles(PWD, arry, TST);
+	//char* str=getenv("PATH");
+	//int nargs=mytokenizedospuntos(str, listcommand);
 	if(nfiles<0){
 		printf("No hay ningun fichero .tst\n");
 		exit(EXIT_SUCCESS);
